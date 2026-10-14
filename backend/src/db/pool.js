@@ -1,0 +1,14 @@
+import pg from 'pg'
+
+const { Pool } = pg
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.PGSSL === 'true' ? true : undefined,
+})
+
+pool.on('error', (error) => {
+  console.error('Unexpected PostgreSQL pool error:', error.message)
+})
+
+export default pool
