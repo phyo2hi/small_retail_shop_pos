@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchProducts } from '../api/products.js'
+import BarcodeInput from '../components/BarcodeInput.jsx'
 import CartPanel from '../components/CartPanel.jsx'
+import PaymentModal from '../components/PaymentModal.jsx'
 import ProductCard from '../components/ProductCard.jsx'
 import Sidebar from '../components/Sidebar.jsx'
+import Toast from '../components/Toast.jsx'
 import Topbar from '../components/Topbar.jsx'
 
 const today = new Intl.DateTimeFormat('en-US', {
@@ -12,6 +15,9 @@ const today = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 }).format(new Date()).toUpperCase()
 
+// Running order counter (starts at 1048, increments each sale)
+let orderCounter = 1048
+
 function POSPage() {
   const [products, setProducts] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
@@ -20,71 +26,122 @@ function POSPage() {
   const [activeCategory, setActiveCategory] = useState('All items')
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState([])
-  const [notice, setNotice] = useState('')
+  const [toast, setToast] = useState({ message: '', type: 'success' })
+  const [showPayment, setShowPayment] = useState(false)
+  const searchRef = useRef(null)
 
+  // ── Fetch products ──────────────────────────────────────────────
   useEffect(() => {
     let active = true
 
     fetchProducts()
-      .then((result) => {
-        if (active) setProducts(result)
-      })
-      .catch((error) => {
-        if (active) setProductsError(error.message)
-      })
-      .finally(() => {
-        if (active) setProductsLoading(false)
-      })
+      .then((result) => { if (active) setProducts(result) })
+      .catch((error) => { if (active) setProductsError(error.message) })
+      .finally(() => { if (active) setProductsLoading(false) })
 
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [reloadKey])
 
   function reloadProducts() {
     setProductsLoading(true)
     setProductsError('')
-    setReloadKey((current) => current + 1)
+    setReloadKey((c) => c + 1)
   }
 
-  const categories = ['All items', ...new Set(products.map((product) => product.category))]
+  // ── Filtering ───────────────────────────────────────────────────
+  const categories = ['All items', ...new Set(products.map((p) => p.category))]
   const normalizedSearch = search.trim().toLowerCase()
-  const filteredProducts = products.filter((product) => {
-    const matchesCategory = activeCategory === 'All items' || product.category === activeCategory
-    const matchesSearch = !normalizedSearch || product.name.toLowerCase().includes(normalizedSearch)
+  const filteredProducts = products.filter((p) => {
+    const matchesCategory = activeCategory === 'All items' || p.category === activeCategory
+    const matchesSearch = !normalizedSearch || p.name.toLowerCase().includes(normalizedSearch)
     return matchesCategory && matchesSearch
   })
 
+  // ── Cart operations ─────────────────────────────────────────────
   function addToCart(product) {
-    setNotice('')
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id)
       if (existing) {
-        return current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+        return current.map((item) =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        )
       }
       return [...current, { ...product, quantity: 1 }]
     })
   }
 
   function changeQuantity(id, difference) {
-    setCart((current) => current
-      .map((item) => item.id === id ? { ...item, quantity: item.quantity + difference } : item)
-      .filter((item) => item.quantity > 0))
+    setCart((current) =>
+      current
+        .map((item) => item.id === id ? { ...item, quantity: item.quantity + difference } : item)
+        .filter((item) => item.quantity > 0)
+    )
   }
 
   function removeFromCart(id) {
     setCart((current) => current.filter((item) => item.id !== id))
   }
 
-  function checkout() {
-    const orderNumber = 1048 + Math.floor(Math.random() * 50)
-    setCart([])
-    setNotice(`Order #${orderNumber} completed. Ready for the next customer.`)
+  // ── Barcode scanner ─────────────────────────────────────────────
+  function handleBarcodeMatch(product) {
+    addToCart(product)
+    showToast(`Added: ${product.name}`, 'success')
   }
+
+  function handleBarcodeNotFound(code) {
+    showToast(`Barcode not found: ${code}`, 'error')
+  }
+
+  // ── Toast ───────────────────────────────────────────────────────
+  function showToast(message, type = 'success') {
+    setToast({ message, type })
+  }
+
+  const dismissToast = useCallback(() => setToast({ message: '', type: 'success' }), [])
+
+  // ── Payment ─────────────────────────────────────────────────────
+  function handleCheckout() {
+    setShowPayment(true)
+  }
+
+  function handlePaymentConfirm(method) {
+    orderCounter += 1
+    const orderNumber = orderCounter
+    setCart([])
+    setShowPayment(false)
+    showToast(`Order #${orderNumber} completed via ${method}. Ready for next customer.`, 'success')
+  }
+
+  function handlePaymentCancel() {
+    setShowPayment(false)
+  }
+
+  // ── Keyboard shortcut ⌘K / Ctrl+K → focus search ───────────────
+  useEffect(() => {
+    function handleKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [])
+
+  const subtotal = cart.reduce((t, i) => t + i.price * i.quantity, 0)
+  const total = subtotal * 1.08
 
   return (
     <div className="app-shell">
+      <BarcodeInput
+        products={products}
+        onMatch={handleBarcodeMatch}
+        onNotFound={handleBarcodeNotFound}
+      />
+
       <Sidebar />
+
       <main className="workspace" id="pos">
         <Topbar />
         <div className="pos-layout">
@@ -98,8 +155,6 @@ function POSPage() {
               <button className="shortcut-button" type="button"><span aria-hidden="true">⌘</span> Quick actions</button>
             </div>
 
-            {notice && <div className="success-notice" role="status"><span aria-hidden="true">✓</span>{notice}<button type="button" onClick={() => setNotice('')} aria-label="Dismiss notice">×</button></div>}
-
             <div className="catalog-toolbar">
               <div>
                 <h2>Find products</h2>
@@ -107,7 +162,13 @@ function POSPage() {
               </div>
               <label className="search-box">
                 <span aria-hidden="true">⌕</span>
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products..." aria-label="Search products" />
+                <input
+                  ref={searchRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search products..."
+                  aria-label="Search products"
+                />
                 <kbd>⌘ K</kbd>
               </label>
             </div>
@@ -136,7 +197,7 @@ function POSPage() {
 
             {productsError ? (
               <div className="catalog-error" role="alert">
-                <strong>Couldn’t load products</strong>
+                <strong>Couldn't load products</strong>
                 <p>{productsError}. Check that the backend and PostgreSQL are running.</p>
                 <button type="button" onClick={reloadProducts}>Try again</button>
               </div>
@@ -144,15 +205,37 @@ function POSPage() {
               <div className="catalog-message" role="status">Loading products from your store database…</div>
             ) : filteredProducts.length > 0 ? (
               <div className="product-grid">
-                {filteredProducts.map((product) => <ProductCard key={product.id} product={product} onAdd={addToCart} />)}
+                {filteredProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} onAdd={addToCart} />
+                ))}
               </div>
             ) : (
-              <div className="no-results"><span aria-hidden="true">⌕</span><strong>No products found</strong><p>Try another search or choose a different category.</p></div>
+              <div className="no-results">
+                <span aria-hidden="true">⌕</span>
+                <strong>No products found</strong>
+                <p>Try another search or choose a different category.</p>
+              </div>
             )}
           </section>
-          <CartPanel items={cart} onChangeQuantity={changeQuantity} onRemove={removeFromCart} onCheckout={checkout} />
+
+          <CartPanel
+            items={cart}
+            onChangeQuantity={changeQuantity}
+            onRemove={removeFromCart}
+            onCheckout={handleCheckout}
+          />
         </div>
       </main>
+
+      {showPayment && (
+        <PaymentModal
+          total={total}
+          onConfirm={handlePaymentConfirm}
+          onCancel={handlePaymentCancel}
+        />
+      )}
+
+      <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />
     </div>
   )
 }

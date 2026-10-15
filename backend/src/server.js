@@ -14,7 +14,7 @@ app.use((_request, response) => {
 })
 
 app.use((error, _request, response, _next) => {
-  console.error('API request failed:', error.message)
+  console.error('API request failed:', error)
   response.status(503).json({ error: 'The API could not complete the request' })
 })
 

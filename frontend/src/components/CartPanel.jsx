@@ -36,7 +36,7 @@ function CartPanel({ items, onChangeQuantity, onRemove, onCheckout }) {
           </div>
         ) : items.map((item) => (
           <div className="cart-item" key={item.id}>
-            <span className={`cart-item-art tone-${item.tone ?? 'green'}`} aria-hidden="true">{item.icon ?? '🛍️'}</span>
+            <span className={`cart-item-art tone-${item.tone ?? 'blue'}`} aria-hidden="true">{item.icon ?? '🛍️'}</span>
             <div className="cart-item-copy">
               <strong>{item.name}</strong>
               <span>{formatCurrency(item.price)} / {item.unit}</span>
@@ -62,7 +62,12 @@ function CartPanel({ items, onChangeQuantity, onRemove, onCheckout }) {
         <div className="summary-line"><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div>
         <div className="summary-line"><span>Tax <small>(8%)</small></span><strong>{formatCurrency(tax)}</strong></div>
         <div className="summary-total"><span>Total</span><strong>{formatCurrency(total)}</strong></div>
-        <button className="checkout-button" type="button" disabled={items.length === 0} onClick={onCheckout}>
+        <button
+          className="checkout-button"
+          type="button"
+          disabled={items.length === 0}
+          onClick={onCheckout}
+        >
           <span>Charge {formatCurrency(total)}</span><span aria-hidden="true">→</span>
         </button>
         <div className="payment-note"><span aria-hidden="true">▣</span> Secure checkout <span>·</span> All payment methods</div>
